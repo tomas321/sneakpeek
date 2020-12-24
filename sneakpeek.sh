@@ -24,12 +24,6 @@ HELP="$USAGE
 \t\t\t-h,--help\tprints this help
 "
 
-declare -A REQUIRED_ARGS
-REQUIRED_ARGS[-f]=1
-REQUIRED_ARGS[-a]=1
-REQUIRED_ARGS[-n]=1
-REQUIRED_ARGS[-t]=1
-
 # possible required arguments groups
 POSSIBILITIES=('-f-t' '-a-n-t')
 
@@ -64,7 +58,6 @@ debug() {
 
 # usage: $0 ARG
 mark_argument_as_read() {
-    REQUIRED_ARGS[$1]=0
     for pos in ${!POSSIBILITIES[@]}; do
         POSSIBILITIES[$pos]=${POSSIBILITIES[$pos]/$1/}
     done
@@ -80,7 +73,7 @@ parse_args() {
     while (( "$#" )); do
         case "$1" in
             -f|--file)
-                [[ ${REQUIRED_ARGS[-f]} -eq 1 ]] && mark_argument_as_read '-f'
+                mark_argument_as_read '-f'
                 [[ $# -ge 2 ]] || fail "'-f': missing required parameter"
                 [[ -e "$2" ]] || fail "'$2': file does not exist"
                 shift
@@ -88,7 +81,7 @@ parse_args() {
                 inspect_file="$1"
                 ;;
             -t|--type)
-                [[ ${REQUIRED_ARGS[-t]} -eq 1 ]] && mark_argument_as_read '-t'
+                mark_argument_as_read '-t'
                 [[ $# -ge 2 ]] || fail "'-t': missing required parameter"
                 shift
 
@@ -108,7 +101,7 @@ parse_args() {
                 debug "read -t options chroot=$t_chroot type=$t_inspect_type cmd=$container_inspect_command"
                 ;;
             -a|--node-addr)
-                [[ ${REQUIRED_ARGS[-a]} -eq 1 ]] && mark_argument_as_read '-a'
+                mark_argument_as_read '-a'
                 [[ $# -ge 2 ]] || fail "'-a': missing required parameter"
                 # TODO: validate IP address/hostname
                 shift
@@ -116,21 +109,21 @@ parse_args() {
                 k8s_node_addr="$1"
                 ;;
             -n|--container-name)
-                [[ ${REQUIRED_ARGS[-n]} -eq 1 ]] && mark_argument_as_read '-n'
+                mark_argument_as_read '-n'
                 [[ $# -ge 2 ]] || fail "'-n': missing required parameter"
                 shift
 
                 container_name="$1"
                 ;;
             -u|--ssh-user)
-                [[ ${REQUIRED_ARGS[-u]} -eq 1 ]] && mark_argument_as_read '-u'
+                mark_argument_as_read '-u'
                 [[ $# -ge 2 ]] || fail "'-u': missing required parameter"
                 shift
 
                 k8s_ssh_user="$1"
                 ;;
             -c|--engine)
-                [[ ${REQUIRED_ARGS[-c]} -eq 1 ]] && mark_argument_as_read '-c'
+                mark_argument_as_read '-c'
                 [[ $# -ge 2 ]] || fail "'-c': missing required parameter"
                 shift
 
@@ -165,7 +158,7 @@ parse_args "$@"
 
 # check if all required arguments were passed
 check_required_args() {
-    for i in ${#POSSIBILITIES[@]}; do
+    for i in ${!POSSIBILITIES[@]}; do
         pos=${POSSIBILITIES[$i]}
         [[ -z "$pos" ]] && return 0
     done
