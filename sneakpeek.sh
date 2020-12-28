@@ -8,8 +8,10 @@
 # GLOBALS
 
 USAGE="
-USAGE: $0\t-f DOCKER_INSPECT_FILE -t (files | merged_dir) [--chroot]
-       $0\t-a NODE_IP -n CONTAINER_NAME -t (files | merged_dir) [--chroot] [-u USER]
+USAGE: $0
+       $0\t-f DOCKER_INSPECT_FILE -t (files | merged_dir) [--chroot]
+       $0\t-a NODE_IP -n CONTAINER_NAME -t (files | merged_dir) [--chroot]
+\t\t\t[-u SSH_USER]
 \t\t\t[-c CONTAINER_ENGINE]
 \t\t\t[-v]
 "
@@ -22,10 +24,12 @@ HELP="$USAGE
 \t\t\t   --chroot\tremoves the base dir to the container FS in the output
 \t\t\t-u,--ssh-user\tssh user to k8s cluster node (defaults to 'vagrant')
 \t\t\t-h,--help\tprints this help
+
+Running sneakpeek without arguments, sets the dynamic mode. Gets all containers on remote k8s cluster.
 "
 
 # possible required arguments groups
-POSSIBILITIES=('-f-t' '-a-n-t')
+POSSIBILITIES=('' '-f-t' '-a-n-t')
 
 VERBOSE=0
 
@@ -41,19 +45,20 @@ MOUNTS_QUERY=".[].Mounts[] | select(.RW == true)"  # only RW mounts
 t_chroot=0
 k8s_ssh_user='vagrant'
 k8s_container_engine='docker'
+container_inspect_command="container_dynamic"
 
 fail() {
-    echo -e "error: $*"
-    echo -e "   $USAGE"
+    echo -e "error: $*" >&2
+    echo -e "   $USAGE" >&2
     exit 1
 }
 
 warn() {
-    echo -e "warning: $*"
+    echo -e "warning: $*" >&2
 }
 
 debug() {
-    [[ $VERBOSE -eq 1 ]] && echo -e "DEBUG: $*"
+    [[ $VERBOSE -eq 1 ]] && echo -e "DEBUG: $*" >&2
 }
 
 # usage: $0 ARG
@@ -192,6 +197,37 @@ container_merged_dir() {
         [[ $k8s_container_engine == 'docker' ]] && merged_dir=$(ssh -l $k8s_ssh_user $k8s_node_addr "sudo docker inspect $container_name" | jq -r "$MERGED_FS_QUERY")
     fi
     echo "$merged_dir" && exit 0
+}
+
+# dynamically setup fswatch for all containers on all k8s nodes
+container_dynamic() {
+    debug "retrieving all containers from k8s cluster"
+    k8s_containers=$(./get_all_containers.sh -c $k8s_container_engine -u $k8s_ssh_user)
+
+    services=()
+    next_ip=""
+    ip=""
+    for line in $k8s_containers; do
+        next_ip=$(echo $line | cut -d, -f1)
+
+        if [[ -n $ip ]] && [[ "$ip" != "$next_ip" ]]; then
+            debug "ssh: connecting to $ip"
+            debug "starting ${services[@]}"
+            ssh -l $k8s_ssh_user $ip "sudo systemctl daemon-reload"
+            ssh -l $k8s_ssh_user $ip "sudo systemctl start ${services[@]}"
+            services=()
+        fi
+
+        ip=$next_ip
+        container_name="$(echo $line | cut -d, -f2)"
+        k8s_node_addr=$ip
+        merged_dir=$(container_merged_dir)
+        services+=("fswatch@$merged_dir.service")
+    done
+
+    debug "ssh: connecting to $ip"
+    ssh -l $k8s_ssh_user $ip "sudo systemctl daemon-reload"
+    ssh -l $k8s_ssh_user $ip "sudo systemctl start ${services[@]}"
 }
 
 
