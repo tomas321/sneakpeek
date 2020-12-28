@@ -8,8 +8,8 @@
 # GLOBALS
 
 USAGE="
-USAGE: $0\t-f DOCKER_INSPECT_FILE -t (files | ...) [--chroot]
-       $0\t-a NODE_IP -n CONTAINER_NAME -t (files | ...) [--chroot] [-u USER]
+USAGE: $0\t-f DOCKER_INSPECT_FILE -t (files | merged_dir) [--chroot]
+       $0\t-a NODE_IP -n CONTAINER_NAME -t (files | merged_dir) [--chroot] [-u USER]
 \t\t\t[-c CONTAINER_ENGINE]
 \t\t\t[-v]
 "
@@ -58,7 +58,7 @@ debug() {
 
 # usage: $0 ARG
 mark_argument_as_read() {
-    for pos in ${!POSSIBILITIES[@]}; do
+    for pos in "${!POSSIBILITIES[@]}"; do
         POSSIBILITIES[$pos]=${POSSIBILITIES[$pos]/$1/}
     done
 }
@@ -67,7 +67,6 @@ mark_argument_as_read() {
 ## ARGUMENTS LOOP ##
 ####################
 parse_args() {
-    argvs=($@)
     inspect_file=""
 
     while (( "$#" )); do
@@ -90,10 +89,10 @@ parse_args() {
                         t_inspect_type="files"  # only informative
                         container_inspect_command="container_changed_files"
                         ;;
-                    # other)
-                    #     t_inspect_type="other"  # only informative
-                    #     container_inspect_command="container_other_process"
-                    #     ;;
+                    merged_dir)
+                        t_inspect_type="merged_dir"  # only informative
+                        container_inspect_command="container_merged_dir"
+                        ;;
                     *)
                         [[ $# -gt 0 ]] && fail "'-t': unknown parameter '$1'"
                         ;;
@@ -158,7 +157,7 @@ parse_args "$@"
 
 # check if all required arguments were passed
 check_required_args() {
-    for i in ${!POSSIBILITIES[@]}; do
+    for i in "${!POSSIBILITIES[@]}"; do
         pos=${POSSIBILITIES[$i]}
         [[ -z "$pos" ]] && return 0
     done
@@ -175,6 +174,18 @@ check_required_args
 # list changed files from docker merged dir
 container_changed_files() {
     debug "listing changed files: chroot=$t_chroot"
+    if [ $inspect_file ]; then
+        merged_dir=$(jq -r "$MERGED_FS_QUERY" "$inspect_file")
+    else
+        [[ $k8s_container_engine == 'docker' ]] && merged_dir=$(ssh -l $k8s_ssh_user $k8s_node_addr "sudo docker inspect $container_name" | jq -r "$MERGED_FS_QUERY")
+    fi
+    (( $t_chroot )) && ssh -l $k8s_ssh_user $k8s_node_addr "sudo find $merged_dir" | sed "s|$merged_dir||g"
+    (( ! $t_chroot )) && ssh -l $k8s_ssh_user $k8s_node_addr "sudo find $merged_dir"
+}
+
+# return the container merged directory
+container_merged_dir() {
+    debug "returning container merged dir"
     if [ $inspect_file ]; then
         merged_dir=$(jq -r "$MERGED_FS_QUERY" "$inspect_file")
     else
