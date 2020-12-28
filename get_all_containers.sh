@@ -37,7 +37,7 @@ warn() {
 }
 
 debug() {
-    [[ $VERBOSE -eq 1 ]] && echo -e "DEBUG: $@" >&2
+    [[ $VERBOSE -eq 1 ]] && echo -e "DEBUG: $*" >&2
 }
 
 # OPTION VARIABLES
@@ -50,8 +50,6 @@ ssh_user="vagrant"
 ## ARGUMENTS LOOP ##
 ####################
 parse_args() {
-    argvs=($@)
-
     while (( "$#" )); do
         case "$1" in
             -c|--engine)
@@ -117,9 +115,9 @@ done
 get_docker_container_names() {
     container_names=()
 
-    for ip in $@; do
+    for ip in "$@"; do
         debug "reading node($ip) containers"
-        for pod in ${!containers[@]}; do
+        for pod in "${!containers[@]}"; do
             for pod_container in ${containers[$pod]}; do
                 container_name="$pod_container""_""$pod"
                 name=$(ssh "$ssh_user@$ip" "sudo docker ps --format '{{json .}}'" | grep "$container_name" | jq -r '.Names')
@@ -130,15 +128,18 @@ get_docker_container_names() {
 
     echo "${container_names[@]}"
 }
-
-node_ips=$(kubectl get nodes -o json | jq -r '.items[].status.addresses[] | select(.type == "InternalIP") | .address')
-names=$(get_docker_container_names $node_ips)
-
-for n in ${names[@]}; do
-    echo $n
-done
 #
 # END: get docker container names
 #
+
+node_ips=$(kubectl get nodes -o json | jq -r '.items[].status.addresses[] | select(.type == "InternalIP") | .address')
+
+if [[ $container_engine == 'docker' ]]; then
+    names=$(get_docker_container_names $node_ips)
+fi
+
+for n in $names; do
+    echo $n
+done
 
 exit 0
