@@ -212,9 +212,9 @@ container_dynamic() {
 
         if [[ -n $ip ]] && [[ "$ip" != "$next_ip" ]]; then
             debug "ssh: connecting to $ip"
-            debug "starting ${services[@]}"
+            debug "starting ${services[*]}"
             ssh -l $k8s_ssh_user $ip "sudo systemctl daemon-reload"
-            ssh -l $k8s_ssh_user $ip "sudo systemctl start ${services[@]}"
+            ssh -l $k8s_ssh_user $ip "sudo systemctl start ${services[*]}"
             services=()
         fi
 
@@ -227,7 +227,7 @@ container_dynamic() {
 
     debug "ssh: connecting to $ip"
     ssh -l $k8s_ssh_user $ip "sudo systemctl daemon-reload"
-    ssh -l $k8s_ssh_user $ip "sudo systemctl start ${services[@]}"
+    ssh -l $k8s_ssh_user $ip "sudo systemctl start ${services[*]}"
 }
 
 

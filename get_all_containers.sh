@@ -45,7 +45,6 @@ debug() {
 container_engine="docker"
 ssh_user="vagrant"
 
-# TODO # change the ARGUMENTS LOOP
 ####################
 ## ARGUMENTS LOOP ##
 ####################
