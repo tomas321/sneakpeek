@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # get all container names in the whole cluster.
-# returns lines of format: NODE_IP,CONTAINER_NAME
+# returns lines of format: NODE_IP,CONTAINER_ID
 #
 # requires:
 #   - kubectl
@@ -107,7 +107,7 @@ for pod in $pods; do
 done
 
 #
-# START: get docker container names
+# START: get docker container IDs
 #
 # usage: $0 NODE_IP [NODE_IP ...]
 #
@@ -119,13 +119,13 @@ get_docker_container_names() {
         for pod in "${!containers[@]}"; do
             for pod_container in ${containers[$pod]}; do
                 container_name="$pod_container""_""$pod"
-                name=$(ssh "$ssh_user@$ip" "sudo docker ps --format '{{json .}}'" | grep "$container_name" | jq -r '.Names')
-                [[ -n "$name" ]] && container_names+=("$ip,$name")
+                container_id=$(ssh "$ssh_user@$ip" "sudo docker ps --format '{{json .}}'" | grep "$container_name" | jq -r '.ID')
+                [[ -n "$container_id" ]] && container_ids+=("$ip,$container_id")
             done
         done
     done
 
-    echo "${container_names[@]}"
+    echo "${container_ids[@]}"
 }
 #
 # END: get docker container names
@@ -134,11 +134,11 @@ get_docker_container_names() {
 node_ips=$(kubectl get nodes -o json | jq -r '.items[].status.addresses[] | select(.type == "InternalIP") | .address')
 
 if [[ $container_engine == 'docker' ]]; then
-    names=$(get_docker_container_names $node_ips)
+    containers=$(get_docker_container_names $node_ips)
 fi
 
-for n in $names; do
-    echo $n
+for c in $containers; do
+    echo $c
 done
 
 exit 0
