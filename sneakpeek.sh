@@ -1,16 +1,18 @@
 #!/bin/bash
 #
 # process docker inspect output
-# REQUIRES: jq
+# REQUIRES:
+#   - 'fswatch@.service' templated systemd service (this script creates fswatch@CONTAINER_MERGE_DIR.service)
+#   - jq
 #
 
 
 # GLOBALS
 
 USAGE="
-USAGE: $0
-       $0\t-f DOCKER_INSPECT_FILE -t (files | merged_dir) [--chroot]
-       $0\t-a NODE_IP -n CONTAINER_NAME -t (files | merged_dir) [--chroot]
+USAGE: $0\t-t (procmon | fswatch)
+       $0\t-f DOCKER_INSPECT_FILE -t (files | merged_dir | fswatch | procmon) [--chroot]
+       $0\t-a NODE_IP -n CONTAINER -t (files | merged_dir) [--chroot]
 \t\t\t[-u SSH_USER]
 \t\t\t[-c CONTAINER_ENGINE]
 \t\t\t[-v]
@@ -18,18 +20,18 @@ USAGE: $0
 HELP="$USAGE
 \t\t\t-a,--node-addr\tIP or host of target k8s node
 \t\t\t-c,--engine\tcontainer engine (defaults to 'docker')
-\t\t\t-f,--file\tpath to docker inspect outpu JSON file
-\t\t\t-n,--container-name\tfull container name on the target k8s node
+\t\t\t-f,--file\tpath to docker inspect output JSON file
+\t\t\t-n,--container\tfull container name/ID on the target k8s node
 \t\t\t-t,--type\ttype of processing to apply on the inspect file
 \t\t\t   --chroot\tremoves the base dir to the container FS in the output
 \t\t\t-u,--ssh-user\tssh user to k8s cluster node (defaults to 'vagrant')
 \t\t\t-h,--help\tprints this help
 
-Running sneakpeek without arguments, sets the dynamic mode. Gets all containers on remote k8s cluster.
+Running sneakpeek without arguments, sets the 'files' type. Gets all containers on remote k8s cluster.
 "
 
 # possible required arguments groups
-POSSIBILITIES=('' '-f-t' '-a-n-t')
+POSSIBILITIES=('-t' '-f-t' '-a-n-t')
 
 VERBOSE=0
 
@@ -45,7 +47,6 @@ MOUNTS_QUERY=".[].Mounts[] | select(.RW == true)"  # only RW mounts
 t_chroot=0
 k8s_ssh_user='vagrant'
 k8s_container_engine='docker'
-container_inspect_command="container_dynamic"
 
 fail() {
     echo -e "error: $*" >&2
@@ -98,6 +99,14 @@ parse_args() {
                         t_inspect_type="merged_dir"  # only informative
                         container_inspect_command="container_merged_dir"
                         ;;
+                    fswatch)
+                        t_inspect_type="fswatch"
+                        container_inspect_command="container_setup_fswatch_dynamically"
+                        ;;
+                    procmon)
+                        t_inspect_type="procmon"
+                        container_inspect_command="container_process_monitoring"
+                        ;;
                     *)
                         [[ $# -gt 0 ]] && fail "'-t': unknown parameter '$1'"
                         ;;
@@ -112,12 +121,12 @@ parse_args() {
 
                 k8s_node_addr="$1"
                 ;;
-            -n|--container-name)
+            -n|--container)
                 mark_argument_as_read '-n'
                 [[ $# -ge 2 ]] || fail "'-n': missing required parameter"
                 shift
 
-                container_name="$1"
+                container="$1"
                 ;;
             -u|--ssh-user)
                 mark_argument_as_read '-u'
@@ -182,7 +191,7 @@ container_changed_files() {
     if [ $inspect_file ]; then
         merged_dir=$(jq -r "$MERGED_FS_QUERY" "$inspect_file")
     else
-        [[ $k8s_container_engine == 'docker' ]] && merged_dir=$(ssh -l $k8s_ssh_user $k8s_node_addr "sudo docker inspect $container_name" | jq -r "$MERGED_FS_QUERY")
+        [[ $k8s_container_engine == 'docker' ]] && merged_dir=$(ssh -l $k8s_ssh_user $k8s_node_addr "sudo docker inspect $container" | jq -r "$MERGED_FS_QUERY")
     fi
     (( $t_chroot )) && ssh -l $k8s_ssh_user $k8s_node_addr "sudo find $merged_dir" | sed "s|$merged_dir||g"
     (( ! $t_chroot )) && ssh -l $k8s_ssh_user $k8s_node_addr "sudo find $merged_dir"
@@ -194,13 +203,13 @@ container_merged_dir() {
     if [ $inspect_file ]; then
         merged_dir=$(jq -r "$MERGED_FS_QUERY" "$inspect_file")
     else
-        [[ $k8s_container_engine == 'docker' ]] && merged_dir=$(ssh -l $k8s_ssh_user $k8s_node_addr "sudo docker inspect $container_name" | jq -r "$MERGED_FS_QUERY")
+        [[ $k8s_container_engine == 'docker' ]] && merged_dir=$(ssh -l $k8s_ssh_user $k8s_node_addr "sudo docker inspect $container" | jq -r "$MERGED_FS_QUERY")
     fi
     echo "$merged_dir" && exit 0
 }
 
 # dynamically setup fswatch for all containers on all k8s nodes
-container_dynamic() {
+container_setup_fswatch_dynamically() {
     debug "retrieving all containers from k8s cluster"
     k8s_containers=$(./get_all_containers.sh -c $k8s_container_engine -u $k8s_ssh_user)
 
@@ -219,7 +228,7 @@ container_dynamic() {
         fi
 
         ip=$next_ip
-        container_name="$(echo $line | cut -d, -f2)"
+        container="$(echo $line | cut -d, -f2)"
         k8s_node_addr=$ip
         merged_dir=$(container_merged_dir)
         services+=("fswatch@$merged_dir.service")
@@ -228,6 +237,26 @@ container_dynamic() {
     debug "ssh: connecting to $ip"
     ssh -l $k8s_ssh_user $ip "sudo systemctl daemon-reload"
     ssh -l $k8s_ssh_user $ip "sudo systemctl start ${services[*]}"
+}
+
+# setup eBPF-based execsnoop (process monitoring)
+container_process_monitoring() {
+    debug "retrieving all containers from k8s cluster"
+    [ $VERBOSE -eq 1 ] && k8s_containers=$(./get_all_containers.sh -c $k8s_container_engine -u $k8s_ssh_user -v)
+    [ $VERBOSE -eq 0 ] && k8s_containers=$(./get_all_containers.sh -c $k8s_container_engine -u $k8s_ssh_user)
+
+    debug "$k8s_containers"
+
+    for line in $k8s_containers; do
+        ip=$(echo $line | cut -d, -f1)
+        container=$(echo $line | cut -d, -f2)
+
+        container_root_proc_inode=$(./get_container_ns.sh -a $ip -n $container -u $k8s_ssh_user -c $k8s_container_engine)
+
+        debug "ssh: connecting to $ip"
+        debug "ssh: executing bpftool-map setup on $ip"
+        ssh $k8s_ssh_user@$ip CONTAINER=$container INODE=$container_root_proc_inode 'bash -s' < ./bpftool_map_container_ns.sh
+    done
 }
 
 

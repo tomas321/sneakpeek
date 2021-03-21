@@ -4,22 +4,33 @@
 - current supports overlay2 FS.
 - utilizes the output of `docker inspect`
 
-## sneakpeak.sh
+## [sneakpeek.sh](./sneakpeek.sh)
 
+### `-t files` - view changed files (docker overlayFS merged\_dir)
 - read JSON docker inspect output
 - output all changed files in container
 
-## get\_all\_containers.sh
+### `-t merged_dir` - retrieve container merged\_dir
+- usually used as an internal function
+- returns the container merged dir
+
+### `-t fswatch` - setup fswatch
+- setups fswatch systemd services for dynamically found containers in k8s cluster
+
+### `-t procmon` - setup for process monitoring for execsnoop
+- creates eBPF maps for execmon namespace filtering (effectively monitor processes in a single container)
+
+## [get\_all\_containers.sh](./get_all_container.sh)
 
 - get all container names in the whole cluster
-- returns lines of format: `NODE_IP,CONTAINER_NAME`
+- returns lines of format: `NODE_IP,CONTAINER_ID`
 
-## get\_container\_ns.sh
+## [get\_container\_ns.sh](./get_container_ns.sh)
 
 - get the inode number of the /proc/PID/ns/mnt file
 - it's effectively used for [BCC](https://github.com/iovisor/bcc) [execsnoop](https://github.com/iovisor/bcc/blob/master/tools/execsnoop.py) setup filtered with the container mount namespace
 
-exmaple usage for a sample `NODE_IP,CONTAINER_NAME` output from [get_al_containers.sh](./get_all_containers.sh):
+exmaple usage for a sample `NODE_IP,CONTAINER_ID` output from [get\_all\_containers.sh](./get_all_containers.sh):
 ```bash
 NODE_IP=10.0.0.3
 CONTAINER_NAME=k8s_container_qwertyuiop
@@ -31,7 +42,9 @@ example output:
 inode number: 24819530
 ```
 
-- the retrieved inode number should be added to the eBPF map as so:
+## [bpftool\_map\_container\_ns.sh](./bpftool_map_container_ns.sh)
+- implements the following functionality
+- the retrieved inode number (see above) should be added to the eBPF map as so:
 ```bash
 bpftool map create /sys/fs/bpf/mnt_ns_set type hash key 8 value 4 entries 128 name mnt_ns_set flags 0
 
