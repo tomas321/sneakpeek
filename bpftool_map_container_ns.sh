@@ -45,9 +45,10 @@ fi
 NS_ID_HEX="$(printf '%016x' $INODE | sed 's/.\{2\}/&\n/g' | $HOST_ENDIAN_CMD | tr '\n' ' ')"
 
 # check if eBPF map already exists
-bpfmap=$(sudo bpftool map show | grep $NAME)
+bpfmap=$(sudo bpftool map show pinned $FILE)
 if [ $? -eq 0 ]; then
-    sudo bpftool map dump id $(echo "$bpfmap" | cut -d: -f1) | grep -q -i "$NS_ID_HEX"
+    id=$(echo $bpfmap | cut -d: -f1)
+    sudo bpftool map dump id $id | grep -q -i "$NS_ID_HEX"
     if [ $? -eq 0 ]; then
         echo "eBPF map already exists"; exit 0
     fi
