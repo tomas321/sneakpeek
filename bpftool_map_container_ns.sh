@@ -4,16 +4,16 @@
 # converts the inode number to hex format
 # updates the created map with the inode number
 #
-# usage: $0 INODE
+# usage: $0 INODE FILE
 #
 
 # GLOBALS
 USAGE="
 USAGE:  $0
-        $0 INODE CONTAINER
+        $0 INODE FILE
 
 \tINODE - positional argument OR as an ENV variable
-\tCONTAINER - positional argument OR as an ENV variable
+\tFILE - positional argument OR as an ENV variable
 
 Either run with ENV variables or with positional arguments
 "
@@ -23,18 +23,17 @@ if [ $# -lt 1 ]; then
     if [ -z ${INODE+x} ]; then
         echo "ERROR: missing 'INODE' argument"; echo -e "$USAGE"; exit 1
     fi
-    if [ -z ${CONTAINER+x} ]; then
-        echo "ERROR: missing 'CONTAINER' argument"; echo -e "$USAGE"; exit 1
+    if [ -z ${FILE+x} ]; then
+        echo "ERROR: missing 'FILE' argument"; echo -e "$USAGE"; exit 1
     fi
 elif [ $# -eq 2 ]; then
-    INODE=$1
-    CONTAINER=$2
+    INODE="$1"
+    FILE="$2"
 else
     echo "ERROR: bad number of arguments"; echo -e $USAGE""; exit 1
 fi
 
-NAME=mnt_ns_$CONTAINER
-FILE=/sys/fs/bpf/$NAME
+NAME="${FILE##*/}"
 
 # choose endian
 if [ $(printf '\1' | od -dAn) -eq 1 ]; then
@@ -45,7 +44,7 @@ fi
 NS_ID_HEX="$(printf '%016x' $INODE | sed 's/.\{2\}/&\n/g' | $HOST_ENDIAN_CMD | tr '\n' ' ')"
 
 # check if eBPF map already exists
-bpfmap=$(sudo bpftool map show pinned $FILE)
+bpfmap=$(sudo bpftool map show pinned $FILE 2>/dev/null)
 if [ $? -eq 0 ]; then
     id=$(echo $bpfmap | cut -d: -f1)
     sudo bpftool map dump id $id | grep -q -i "$NS_ID_HEX"

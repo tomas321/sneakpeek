@@ -254,8 +254,9 @@ container_process_monitoring() {
         container_root_proc_inode=$(./get_container_ns.sh -a $ip -n $container -u $k8s_ssh_user -c $k8s_container_engine)
 
         debug "ssh: connecting to $ip"
-        debug "ssh: executing bpftool-map setup on $ip"
-        ssh $k8s_ssh_user@$ip CONTAINER=$container INODE=$container_root_proc_inode 'bash -s' < ./bpftool_map_container_ns.sh
+        debug "ssh: executing bpftool-map setup on $ip for $container"
+        mnt_ns_filename="/sys/fs/bpf/mnt_ns_$container"
+        ssh $k8s_ssh_user@$ip FILE="$mnt_ns_filename" INODE="$container_root_proc_inode" 'bash -s' < ./bpftool_map_container_ns.sh
     done
 }
 
