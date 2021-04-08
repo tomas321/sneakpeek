@@ -58,3 +58,8 @@ fi
 
 echo "updating eBPF map with inode ID '$NS_ID_HEX'"
 sudo bpftool map update pinned $FILE key hex $NS_ID_HEX value hex 00 00 00 00 any
+
+# start a templated systemd services
+# essetially it runs a script
+# i.e. '/usr/local/bin/execsnoop/execsnoop.sh NAME' using the name to construct the '--mntnsmap' option
+sudo systemctl start execsnoop@$NAME
