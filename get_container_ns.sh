@@ -114,10 +114,10 @@ done
 ##########
 
 NS=$(ssh $ssh_user@$k8s_node_host CONTAINER=$container_name 'bash -s' <<-"ENDSSH"
-    id=$(sudo docker inspect $CONTAINER | jq -r '.[0].Config.Labels."io.kubernetes.sandbox.id"');
+    id=$(sudo docker inspect $CONTAINER | jq -r '.[0].Id');
     ppid=$(ps wax | grep containerd | grep "$id" | awk '{print $1}');
     pid=$(pgrep -P $ppid | head -1);
-    echo $(sudo stat -c '%i' /proc/$pid/ns/mnt)
+    echo $(sudo stat -Lc '%i' /proc/$pid/ns/mnt)
 ENDSSH
 )
 
