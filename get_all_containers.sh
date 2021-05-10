@@ -14,9 +14,16 @@ USAGE="
 USAGE: $0\t[-c (docker | ...)] [-v]
 "
 HELP="$USAGE
+\t\t-e,--exclude POD\texclude pod from sneakpeek. POD is the full pod name
 \t\t-c,--engine ENGINE\tspecify the container engine (defaults to 'docker')
 \t\t-v\t\tverbose setting
 \t\t-h,--help\tprints this help
+
+EXAMPLE:
+
+exclude multiple pods:
+
+\t $0 -e pod1-123 -e pod2-321
 "
 
 # required arguments
@@ -42,6 +49,7 @@ debug() {
 # OPTION VARIABLES
 
 container_engine="docker"
+declare -a exclude_pods
 
 ####################
 ## ARGUMENTS LOOP ##
@@ -62,6 +70,14 @@ parse_args() {
                         ;;
                 esac
                 container_engine="$1"
+                ;;
+            -e|--exclude)
+                [[ ${REQUIRED_ARGS[-e]} -eq 1 ]] && REQUIRED_ARGS[-e]=0
+                [[ $# -ge 2 ]] || fail "'-e': missing required parameter"
+                shift
+
+                # filter containers with excluded containers
+                exclude_pods+=("$1")
                 ;;
             -v|--verbose)
                 VERBOSE=1
@@ -93,6 +109,7 @@ done
 #
 
 # containers in the docker format 'CONTAINERNAME_PODNMAE,IP'
+debug "retrieving all container/pod information via kubectl"
 if [[ $container_engine == 'docker' ]]; then
     # the trimming is of container ID is specific to docker - ID begins with 'docker://' -> [9:21]
     containers=$(kubectl get pods -o json | jq -r '.items[] | "\(.spec.containers[].name)_\(.metadata.name),\(.status.hostIP),\(.status.containerStatuses[] | select(.ready == true and .started == true) | .containerID | .[9:21])"')
@@ -100,8 +117,16 @@ else
     fail "container engine '$container_engine': not supported"
 fi
 
+debug "printing nodeIP-container mapping"
 for c in $containers; do
-    echo $c | cut -d, -f2-
+    exclude=0
+    pod=$(echo $c | cut -d, -f1 | cut -d_ -f2)
+    for exclude_pod in $exclude_pods; do
+        if [[ "$exclude_pod" == "$pod" ]]; then
+            exclude=1 && break
+        fi
+    done
+    [ $exclude == 1 ] || echo $c | cut -d, -f2-
 done
 
 exit 0
