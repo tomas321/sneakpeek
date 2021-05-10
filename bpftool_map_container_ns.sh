@@ -52,7 +52,9 @@ if [ $? -eq 0 ]; then
     id=$(echo $bpfmap | cut -d: -f1)
     sudo bpftool map dump id $id | grep -q -i "$NS_ID_HEX"
     if [ $? -eq 0 ]; then
-        echo "eBPF map already exists"; exit 0
+        echo "eBPF map already exists"
+        sudo systemctl start execsnoop@$NAME
+        exit 0
     fi
 else
     echo "creating eBPF map '$FILE'"
