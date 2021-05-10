@@ -11,16 +11,15 @@
 # GLOBALS
 
 USAGE="
-USAGE: $0\t[-c (docker | ...)] [-u USER] [-v]
+USAGE: $0\t[-c (docker | ...)] [-v]
 "
 HELP="$USAGE
 \t\t-c,--engine ENGINE\tspecify the container engine (defaults to 'docker')
-\t\t-u,--ssh-user USER\tk8s node ssh user (defaults to 'vagrant')
 \t\t-v\t\tverbose setting
 \t\t-h,--help\tprints this help
 "
 
-# TODO # add all required arguments as so
+# required arguments
 declare -A REQUIRED_ARGS
 # REQUIRED_ARGS[-a]=1
 
@@ -43,7 +42,6 @@ debug() {
 # OPTION VARIABLES
 
 container_engine="docker"
-ssh_user="vagrant"
 
 ####################
 ## ARGUMENTS LOOP ##
@@ -64,12 +62,6 @@ parse_args() {
                         ;;
                 esac
                 container_engine="$1"
-                ;;
-            -u|--ssh-user)
-                [[ ${REQUIRED_ARGS[-u]} -eq 1 ]] && REQUIRED_ARGS[-u]=0
-                [[ $# -ge 2 ]] || fail "'-u': missing required parameter"
-                ssh_user="$2"
-                shift
                 ;;
             -v|--verbose)
                 VERBOSE=1
@@ -99,46 +91,17 @@ done
 #
 # Gather containers of each kubernetes pod
 #
-pods=$(kubectl get pods -o json | jq -r '.items[].metadata.name')
-declare -A containers
 
-for pod in $pods; do
-    containers[$pod]=$(kubectl get pods -o json | jq -r '.items[] | select(.metadata.name == "'$pod'") | .spec.containers[].name')
-done
-
-#
-# START: get docker container IDs
-#
-# usage: $0 NODE_IP [NODE_IP ...]
-#
-get_docker_container_names() {
-    container_names=()
-
-    for ip in "$@"; do
-        debug "reading node($ip) containers"
-        for pod in "${!containers[@]}"; do
-            for pod_container in ${containers[$pod]}; do
-                container_name="$pod_container""_""$pod"
-                container_id=$(ssh "$ssh_user@$ip" "sudo docker ps --format '{{json .}}'" | grep "$container_name" | jq -r '.ID')
-                [[ -n "$container_id" ]] && container_ids+=("$ip,$container_id")
-            done
-        done
-    done
-
-    echo "${container_ids[@]}"
-}
-#
-# END: get docker container names
-#
-
-node_ips=$(kubectl get nodes -o json | jq -r '.items[].status.addresses[] | select(.type == "InternalIP") | .address')
-
+# containers in the docker format 'CONTAINERNAME_PODNMAE,IP'
 if [[ $container_engine == 'docker' ]]; then
-    containers=$(get_docker_container_names $node_ips)
+    # the trimming is of container ID is specific to docker - ID begins with 'docker://' -> [9:21]
+    containers=$(kubectl get pods -o json | jq -r '.items[] | "\(.spec.containers[].name)_\(.metadata.name),\(.status.hostIP),\(.status.containerStatuses[] | select(.ready == true and .started == true) | .containerID | .[9:21])"')
+else
+    fail "container engine '$container_engine': not supported"
 fi
 
 for c in $containers; do
-    echo $c
+    echo $c | cut -d, -f2-
 done
 
 exit 0
