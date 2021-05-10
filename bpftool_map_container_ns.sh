@@ -3,6 +3,9 @@
 # creates eBPF map if its missing
 # converts the inode number to hex format
 # updates the created map with the inode number
+# run the execsnoop@mnt_ns_ABCD, where ABCD is the ID of the container and is extracted from the input argument FILE
+#
+# requires the template unit file `execsnoop@.service`
 #
 # usage: $0 INODE FILE
 #
@@ -60,6 +63,6 @@ echo "updating eBPF map with inode ID '$NS_ID_HEX'"
 sudo bpftool map update pinned $FILE key hex $NS_ID_HEX value hex 00 00 00 00 any
 
 # start a templated systemd services
-# essetially it runs a script
+# essetially the systemd service runs a script
 # i.e. '/usr/local/bin/execsnoop/execsnoop.sh NAME' using the name to construct the '--mntnsmap' option
 sudo systemctl start execsnoop@$NAME

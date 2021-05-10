@@ -211,7 +211,8 @@ container_merged_dir() {
 # dynamically setup fswatch for all containers on all k8s nodes
 container_setup_fswatch_dynamically() {
     debug "retrieving all containers from k8s cluster"
-    k8s_containers=$(./get_all_containers.sh -c $k8s_container_engine -u $k8s_ssh_user)
+    [ $VERBOSE -eq 1 ] && k8s_containers=$(./get_all_containers.sh -c $k8s_container_engine -u $k8s_ssh_user -v)
+    [ $VERBOSE -eq 0 ] && k8s_containers=$(./get_all_containers.sh -c $k8s_container_engine -u $k8s_ssh_user)
 
     services=()
     next_ip=""
@@ -222,8 +223,7 @@ container_setup_fswatch_dynamically() {
         if [[ -n $ip ]] && [[ "$ip" != "$next_ip" ]]; then
             debug "ssh: connecting to $ip"
             debug "starting ${services[*]}"
-            ssh -l $k8s_ssh_user $ip "sudo systemctl daemon-reload"
-            ssh -l $k8s_ssh_user $ip "sudo systemctl start ${services[*]}"
+            ssh -l $k8s_ssh_user $ip "sudo systemctl daemon-reload && sudo systemctl start ${services[*]}"
             services=()
         fi
 
@@ -235,8 +235,7 @@ container_setup_fswatch_dynamically() {
     done
 
     debug "ssh: connecting to $ip"
-    ssh -l $k8s_ssh_user $ip "sudo systemctl daemon-reload"
-    ssh -l $k8s_ssh_user $ip "sudo systemctl start ${services[*]}"
+    ssh -l $k8s_ssh_user $ip "sudo systemctl daemon-reload && sudo systemctl start ${services[*]}"
 }
 
 # setup eBPF-based execsnoop (process monitoring)
