@@ -11,20 +11,22 @@
 
 USAGE="
 USAGE: $0\t-t (procmon | fswatch)
-       $0\t-f DOCKER_INSPECT_FILE -t (files | merged_dir | fswatch | procmon) [--chroot]
+       $0\t-f DOCKER_INSPECT_FILE -t (files | merged_dir) [--chroot]
        $0\t-a NODE_IP -n CONTAINER -t (files | merged_dir) [--chroot]
+\t\t\t[-e POD...]
 \t\t\t[-u SSH_USER]
 \t\t\t[-c CONTAINER_ENGINE]
 \t\t\t[-v]
 "
 HELP="$USAGE
-\t\t\t-a,--node-addr\tIP or host of target k8s node
-\t\t\t-c,--engine\tcontainer engine (defaults to 'docker')
-\t\t\t-f,--file\tpath to docker inspect output JSON file
+\t\t\t-a,--node-addr HOST\tIP or host of target k8s node
+\t\t\t-c,--engine ENG\tcontainer engine (defaults to 'docker')
+\t\t\t-e,--exclude POD\tpod to exclude from sneakpeek. pod
+\t\t\t-f,--file TYPE\tpath to docker inspect output JSON file
 \t\t\t-n,--container\tfull container name/ID on the target k8s node
 \t\t\t-t,--type\ttype of processing to apply on the inspect file
 \t\t\t   --chroot\tremoves the base dir to the container FS in the output
-\t\t\t-u,--ssh-user\tssh user to k8s cluster node (defaults to 'vagrant')
+\t\t\t-u,--ssh-user USER\tssh user to k8s cluster node (defaults to 'vagrant')
 \t\t\t-h,--help\tprints this help
 
 Running sneakpeek without arguments, sets the 'files' type. Gets all containers on remote k8s cluster.
@@ -47,6 +49,7 @@ MOUNTS_QUERY=".[].Mounts[] | select(.RW == true)"  # only RW mounts
 t_chroot=0
 k8s_ssh_user='vagrant'
 k8s_container_engine='docker'
+declare -a exclude_pods
 
 fail() {
     echo -e "error: $*" >&2
@@ -112,6 +115,13 @@ parse_args() {
                         ;;
                 esac
                 debug "read -t options chroot=$t_chroot type=$t_inspect_type cmd=$container_inspect_command"
+                ;;
+            -e|--exclude)
+                mark_argument_as_read '-e'
+                [[ $# -ge 2 ]] || fail "'-e': missing required parameter"
+                shift
+
+                exclude_pods+=("$1")
                 ;;
             -a|--node-addr)
                 mark_argument_as_read '-a'
@@ -185,6 +195,18 @@ check_required_args
 ## MAIN ##
 ##########
 
+get_all_containers_caller() {
+    if [[ ${#exclude_pods[@]} -eq 0 ]]; then
+        ./get_all_containers.sh -c $k8s_container_engine $*
+    else
+        extra_params=""
+        for pod in $exclude_pods; do
+            extra_params="$extra_params -e $pod"
+        done
+        ./get_all_containers.sh -c $k8s_container_engine $extra_params $*
+    fi
+}
+
 # list changed files from docker merged dir
 container_changed_files() {
     debug "listing changed files: chroot=$t_chroot"
@@ -211,8 +233,8 @@ container_merged_dir() {
 # dynamically setup fswatch for all containers on all k8s nodes
 container_setup_fswatch_dynamically() {
     debug "retrieving all containers from k8s cluster"
-    [ $VERBOSE -eq 1 ] && k8s_containers=$(./get_all_containers.sh -c $k8s_container_engine -u $k8s_ssh_user -v)
-    [ $VERBOSE -eq 0 ] && k8s_containers=$(./get_all_containers.sh -c $k8s_container_engine -u $k8s_ssh_user)
+    [ $VERBOSE -eq 1 ] && k8s_containers=$(get_all_containers_caller -v)
+    [ $VERBOSE -eq 0 ] && k8s_containers=$(get_all_containers_caller)
 
     services=()
     next_ip=""
@@ -241,8 +263,8 @@ container_setup_fswatch_dynamically() {
 # setup eBPF-based execsnoop (process monitoring)
 container_process_monitoring() {
     debug "retrieving all containers from k8s cluster"
-    [ $VERBOSE -eq 1 ] && k8s_containers=$(./get_all_containers.sh -c $k8s_container_engine -u $k8s_ssh_user -v)
-    [ $VERBOSE -eq 0 ] && k8s_containers=$(./get_all_containers.sh -c $k8s_container_engine -u $k8s_ssh_user)
+    [ $VERBOSE -eq 1 ] && k8s_containers=$(get_all_containers_caller -v)
+    [ $VERBOSE -eq 0 ] && k8s_containers=$(get_all_containers_caller)
 
     debug "$k8s_containers"
 

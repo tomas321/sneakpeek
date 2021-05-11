@@ -114,9 +114,7 @@ done
 ##########
 
 NS=$(ssh $ssh_user@$k8s_node_host CONTAINER=$container_name 'bash -s' <<-"ENDSSH"
-    id=$(sudo docker inspect $CONTAINER | jq -r '.[0].Id');
-    ppid=$(ps wax | grep containerd | grep "$id" | awk '{print $1}');
-    pid=$(pgrep -P $ppid | head -1);
+    pid=$(sudo docker inspect $CONTAINER | jq -r '.[0].State.Pid');
     echo $(sudo stat -Lc '%i' /proc/$pid/ns/mnt)
 ENDSSH
 )
