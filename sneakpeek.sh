@@ -2,7 +2,7 @@
 #
 # process docker inspect output
 # REQUIRES:
-#   - 'fswatch@.service' templated systemd service (this script creates fswatch@CONTAINER_MERGE_DIR.service)
+#   - 'fswatch@.service' templated systemd service (this script creates fswatch@CONTAINER.service)
 #   - jq
 #
 
@@ -251,9 +251,7 @@ container_setup_fswatch_dynamically() {
 
         ip=$next_ip
         container="$(echo $line | cut -d, -f2)"
-        k8s_node_addr=$ip
-        merged_dir=$(container_merged_dir)
-        services+=("fswatch@$merged_dir.service")
+        services+=("fswatch@$container.service")
     done
 
     debug "ssh: connecting to $ip"
