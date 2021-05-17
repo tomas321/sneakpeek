@@ -21,6 +21,10 @@
 #### `-t procmon` - setup for process monitoring for execsnoop
 - creates eBPF maps for execsnoop namespace filtering (effectively monitor processes in a single container)
 
+#### `-t tcptracer` - setup network connection monitoring for tcptracer
+
+- creates eBPF maps for tcptracer namespace filtering (effectively monitor networking in a single container)
+
 ### [get\_all\_containers.sh](./get_all_containers.sh)
 
 - get all container names in the whole cluster
