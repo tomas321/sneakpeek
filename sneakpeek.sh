@@ -10,7 +10,7 @@
 # GLOBALS
 
 USAGE="
-USAGE: $0\t-t (procmon | fswatch)
+USAGE: $0\t-t (procmon | fswatch | tcptracer)
        $0\t-f DOCKER_INSPECT_FILE -t (files | merged_dir) [--chroot]
        $0\t-a NODE_IP -n CONTAINER -t (files | merged_dir) [--chroot]
 \t\t\t[-e POD...]
@@ -109,6 +109,10 @@ parse_args() {
                     procmon)
                         t_inspect_type="procmon"
                         container_inspect_command="container_process_monitoring"
+                        ;;
+                    tcptracer)
+                        t_inspect_type="tcptracer"
+                        container_inspect_command="container_network_monitoring"
                         ;;
                     *)
                         [[ $# -gt 0 ]] && fail "'-t': unknown parameter '$1'"
@@ -258,6 +262,27 @@ container_setup_fswatch_dynamically() {
     ssh -l $k8s_ssh_user $ip "sudo systemctl daemon-reload && sudo systemctl start ${services[*]}"
 }
 
+# setup eBPF-based tcptracer (network TCP connection tracer)
+container_network_monitoring() {
+    debug "retrieving all containers from k8s cluster"
+    [ $VERBOSE -eq 1 ] && k8s_containers=$(get_all_containers_caller -v)
+    [ $VERBOSE -eq 0 ] && k8s_containers=$(get_all_containers_caller)
+
+    debug "$k8s_containers"
+
+    for line in $k8s_containers; do
+        ip=$(echo $line | cut -d, -f1)
+        container=$(echo $line | cut -d, -f2)
+
+        container_root_proc_inode=$(./get_container_ns.sh -a $ip -n $container -u $k8s_ssh_user -c $k8s_container_engine)
+
+        debug "ssh: connecting to $ip"
+        debug "ssh: executing bpftool-map setup on $ip for $container"
+        mnt_ns_filename="/sys/fs/bpf/mnt_ns_$container"
+        ssh $k8s_ssh_user@$ip FILE="$mnt_ns_filename" INODE="$container_root_proc_inode" TYPE="tcptracer" 'bash -s' < ./bpftool_map_container_ns.sh
+    done
+}
+
 # setup eBPF-based execsnoop (process monitoring)
 container_process_monitoring() {
     debug "retrieving all containers from k8s cluster"
@@ -275,7 +300,7 @@ container_process_monitoring() {
         debug "ssh: connecting to $ip"
         debug "ssh: executing bpftool-map setup on $ip for $container"
         mnt_ns_filename="/sys/fs/bpf/mnt_ns_$container"
-        ssh $k8s_ssh_user@$ip FILE="$mnt_ns_filename" INODE="$container_root_proc_inode" 'bash -s' < ./bpftool_map_container_ns.sh
+        ssh $k8s_ssh_user@$ip FILE="$mnt_ns_filename" INODE="$container_root_proc_inode" TYPE="execsnoop" 'bash -s' < ./bpftool_map_container_ns.sh
     done
 }
 

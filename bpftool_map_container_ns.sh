@@ -5,18 +5,19 @@
 # updates the created map with the inode number
 # run the execsnoop@mnt_ns_ABCD, where ABCD is the ID of the container and is extracted from the input argument FILE
 #
-# requires the template unit file `execsnoop@.service`
+# requires the template unit file `execsnoop@.service` || `tcptracer@.server` depending on the TYPE
 #
-# usage: $0 INODE FILE
+# usage: $0 INODE FILE TYPE
 #
 
 # GLOBALS
 USAGE="
 USAGE:  $0
-        $0 INODE FILE
+        $0 INODE FILE TYPE
 
 \tINODE - positional argument OR as an ENV variable
 \tFILE - positional argument OR as an ENV variable
+\tTYPE - one of [execsnoop, tcptracer]
 
 Either run with ENV variables or with positional arguments
 "
@@ -29,14 +30,23 @@ if [ $# -lt 1 ]; then
     if [ -z ${FILE+x} ]; then
         echo "ERROR: missing 'FILE' argument"; echo -e "$USAGE"; exit 1
     fi
-elif [ $# -eq 2 ]; then
+    if [ -z ${TYPE+x} ]; then
+        echo "ERROR: missing 'TYPE' argument"; echo -e "$USAGE"; exit 1
+    fi
+elif [ $# -eq 3 ]; then
     INODE="$1"
     FILE="$2"
+    TYPE="$3"
 else
     echo "ERROR: bad number of arguments"; echo -e $USAGE""; exit 1
 fi
 
 NAME="${FILE##*/}"
+
+function start_service() {
+    [[ "$TYPE" == "execsnoop" ]] && echo "INFO: starting execsnoop@$NAME" >&2 && sudo systemctl start execsnoop@$NAME
+    [[ "$TYPE" == "tcptracer" ]] && echo "INFO: starting tcptracer@$NAME" >&2 && sudo systemctl start tcptracer@$NAME
+}
 
 # choose endian
 if [ $(printf '\1' | od -dAn) -eq 1 ]; then
@@ -53,7 +63,7 @@ if [ $? -eq 0 ]; then
     sudo bpftool map dump id $id | grep -q -i "$NS_ID_HEX"
     if [ $? -eq 0 ]; then
         echo "eBPF map already exists"
-        sudo systemctl start execsnoop@$NAME
+        start_service
         exit 0
     fi
 else
@@ -64,7 +74,8 @@ fi
 echo "updating eBPF map with inode ID '$NS_ID_HEX'"
 sudo bpftool map update pinned $FILE key hex $NS_ID_HEX value hex 00 00 00 00 any
 
-# start a templated systemd services
+# start a templated systemd service based on the TYPE
 # essetially the systemd service runs a script
-# i.e. '/usr/local/bin/execsnoop/execsnoop.sh NAME' using the name to construct the '--mntnsmap' option
-sudo systemctl start execsnoop@$NAME
+# e.g. '/usr/local/bin/execsnoop/execsnoop.sh NAME' using the name to construct the '--mntnsmap' option
+# e.g. '/usr/local/bin/tcptracer/tcptracer.sh NAME' using the name to construct the '--mntnsmap' option
+start_service
